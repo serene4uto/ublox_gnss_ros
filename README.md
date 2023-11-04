@@ -1,0 +1,1 @@
+# ROS2 package for Ublox GNSS module
