@@ -4,14 +4,14 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='gps_ros',
-            executable='gps_pub',
-            name='gps_pub',
+            package='ublox_gnss',
+            executable='gnss_pub',
+            name='gnss_pub',
         ),
 
         Node(
-            package='ntrip_ros',
-            executable='rtcm_pub_node',
-            name='rtcm_pub_node',
+            package='rtcm_provider',
+            executable='rtcm_ntrip_pub',
+            name='rtcm_ntrip_pub',
         )
     ])
