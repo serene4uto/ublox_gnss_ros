@@ -50,17 +50,21 @@ class GnssEval(Node):
         # ros2 params
         self.declare_parameter('log_enable', True)
         self.declare_parameter('log_path', LOG_PATH)
-        self.declare_parameter('val_plot', False)
+        # self.declare_parameter('val_plot', False)
         self.declare_parameter('ground_truth', Parameter.Type.STRING)
         
 
         self.ground_truth = self.get_parameter('ground_truth').value
         self.log_enable = self.get_parameter('log_enable').value
         self.log_path = self.get_parameter('log_path').value
-        self.val_plot = self.get_parameter('val_plot').value
+        # self.val_plot = self.get_parameter('val_plot').value
 
 
-        self.get_logger().info(f'ground_truth: {self.ground_truth}, log_enable: {self.log_enable}, val_plot: {self.val_plot}')
+        self.get_logger().info(f'ground_truth: {self.ground_truth}')
+        self.get_logger().info(f'log_enable: {self.log_enable}')
+        self.get_logger().info(f'log_path: {self.log_path}')
+        # self.get_logger().info(f'val_plot: {self.val_plot}')
+                               
 
         # subscribe to gps/fix topic
         self.sub = self.create_subscription(
@@ -78,11 +82,11 @@ class GnssEval(Node):
             }
 
         # setting up logger
-        os.makedirs(LOG_PATH, exist_ok=True)
+        os.makedirs(self.log_path, exist_ok=True)
         current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         if self.log_enable:
-            file_handler = logging.FileHandler(os.path.join(LOG_PATH, f'gnss_eval_{current_time}.csv'))
+            file_handler = logging.FileHandler(os.path.join(self.log_path, f'gnss_eval_{current_time}.csv'))
             file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(logging.Formatter('%(asctime)s,%(message)s'))
             logger.addHandler(file_handler)
