@@ -4,15 +4,7 @@ gnssrtk:
     device: /dev/ttyUSB0
     frame_id: gnss
     baudrate: 115200
-    
 
-
-    ntrip_client:
-      ntrip_user: kde1054@naver.com
-      ntrip_password: gnss
-      ntrip_server: www.gnssdata.or.kr
-      ntrip_port: 2101
-      mount_point: TEGN-RTCM32
     
 
 
