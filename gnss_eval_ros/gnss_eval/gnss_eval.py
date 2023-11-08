@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 GT_COORDS = {
     'u08':  {
         'lat': 35.99040046,
-        'lon': 128.925528,
+        'lon': 128.92552391,
         'alt': 96.4
     },
     'u0736': {
