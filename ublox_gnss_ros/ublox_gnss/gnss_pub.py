@@ -15,8 +15,8 @@ from .gnssapp import GNSSSkeletonApp
 
 
 
-SERIAL_PORT = "/dev/ttyACM0"
-# SERIAL_PORT = "/dev/ttyUSB0"
+# SERIAL_PORT = "/dev/ttyACM0"
+SERIAL_PORT = "/dev/ttyUSB0"
 BAUDRATE = 115200
 TIMEOUT = 0.1
 
