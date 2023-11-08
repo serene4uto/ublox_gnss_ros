@@ -49,12 +49,14 @@ class GnssEval(Node):
         
         # ros2 params
         self.declare_parameter('log_enable', True)
+        self.declare_parameter('log_path', LOG_PATH)
         self.declare_parameter('val_plot', False)
         self.declare_parameter('ground_truth', Parameter.Type.STRING)
         
 
         self.ground_truth = self.get_parameter('ground_truth').value
         self.log_enable = self.get_parameter('log_enable').value
+        self.log_path = self.get_parameter('log_path').value
         self.val_plot = self.get_parameter('val_plot').value
 
 
