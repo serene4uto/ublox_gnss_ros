@@ -2,3 +2,4 @@ pyrtcm
 pyubx2
 pygnssutils>=1.0.16
 pyproj
+pytz
