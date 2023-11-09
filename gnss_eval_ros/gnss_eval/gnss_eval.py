@@ -6,6 +6,7 @@ from std_msgs.msg import String
 import logging
 import os
 from datetime import datetime
+import pytz
 import threading
 import numpy as np
 import pyproj
@@ -83,7 +84,8 @@ class GnssEval(Node):
 
         # setting up logger
         os.makedirs(self.log_path, exist_ok=True)
-        current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        kst = pytz.timezone('Asia/Seoul')
+        current_time = datetime.now(pytz.utc).astimezone(kst)
 
         if self.log_enable:
             file_handler = logging.FileHandler(os.path.join(self.log_path, f'gnss_eval_{current_time}.csv'))
