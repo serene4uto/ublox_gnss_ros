@@ -31,7 +31,7 @@ displays:
       visible: true
       collapsed: false
       topic: /fix
-      color: "#ff0000"
+      color: "#55aaff"
       draw_style: points
       position_tolerance: 0
-      buffer_size: 10
+      buffer_size: 1
