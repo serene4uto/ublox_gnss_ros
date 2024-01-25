@@ -1,0 +1,37 @@
+capture_directory: "~"
+fixed_frame: map
+target_frame: map
+fix_orientation: false
+rotate_90: false
+enable_antialiasing: true
+show_displays: true
+show_status_bar: true
+show_capture_tools: true
+window_width: 1920
+window_height: 1016
+view_scale: 0.564473748
+offset_x: -55.0469894
+offset_y: -4.65194941
+use_latest_transforms: true
+background: "#a0a0a4"
+image_transport: raw
+displays:
+  - type: mapviz_plugins/tile_map
+    name: new display
+    config:
+      visible: true
+      collapsed: false
+      custom_sources:
+        []
+      bing_api_key: "AnD4L_9FFGvvrT9-LpxrqDJYEg9z3I-33Y14xpaZGNNDXlTyZqe6tgBWoqdKZxII"
+      source: Bing Maps (terrain)
+  - type: mapviz_plugins/navsat
+    name: new display
+    config:
+      visible: true
+      collapsed: false
+      topic: /gps/fix
+      color: "#ff0000"
+      draw_style: points
+      position_tolerance: 0
+      buffer_size: 10
