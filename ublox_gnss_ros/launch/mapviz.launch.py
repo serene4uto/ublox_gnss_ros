@@ -7,7 +7,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    gps_wpf_dir = get_package_share_directory("ublox_gnss_ros")
+    gps_wpf_dir = get_package_share_directory("ublox_gnss")
     mapviz_config_file = os.path.join(gps_wpf_dir, "config", "gps_wpf_demo.mvc")
 
     node_mapviz = Node(
