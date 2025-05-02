@@ -15,7 +15,7 @@ class UbloxGnssNode(Node):
         self.get_logger().info('Ublox GNSS Node has been started.')
         
         # declare parameters
-        self.declare_parameter('serial_port', '/dev/ttyUSB0')
+        self.declare_parameter('serial_port', '/dev/ttyACM0')
         self.declare_parameter('baudrate', 115200)
         self.declare_parameter('frame_id', 'gps')
         
@@ -29,13 +29,13 @@ class UbloxGnssNode(Node):
         
         self.fix_pub = self.create_publisher(NavSatFix, '/fix', 10)
         
-        self.fix_pub_timer = self.create_timer(0.1, self.on_fix_pub_timer)
+        self.fix_pub_timer = self.create_timer(0.03, self.on_fix_pub_timer)
 
         self.send_queue = Queue()
         self.receive_queue = Queue()
         self.stop_event = Event()
     
-        with UbloxGnss(
+        self.ublox_gnss = UbloxGnss(
             self.port,
             int(self.baudrate),
             float(3),
@@ -46,9 +46,10 @@ class UbloxGnssNode(Node):
             enableubx=True,
             enablenmea=False,
             showhacc=True,
-            verbose=True,
-        ) as gna:
-            gna.run()
+            verbose=False,
+        )
+        
+        self.ublox_gnss.run()
             
     def on_fix_pub_timer(self):
         try:
@@ -75,6 +76,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = UbloxGnssNode()
     rclpy.spin(node)
+    node.ublox_gnss.stop()
     node.destroy_node()
     rclpy.shutdown()
     
