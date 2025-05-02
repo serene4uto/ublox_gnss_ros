@@ -45,7 +45,11 @@ class UbloxGnss:
         self.sendqueue = kwargs.get("sendqueue", None)
         self.idonly = kwargs.get("idonly", True)
         self.enableubx = kwargs.get("enableubx", False)
+        self.enablenmea = kwargs.get("enablenmea", False)
         self.showhacc = kwargs.get("showhacc", False)
+        self.measrate = kwargs.get("measrate", 30)
+        self.navrate = kwargs.get("navrate", 1)
+        self.navpriorate = kwargs.get("navpriorate", 30)
         self.stream = None
         self.connected = DISCONNECTED
         self.lat = 0
@@ -77,7 +81,7 @@ class UbloxGnss:
         Run GNSS reader/writer.
         """
 
-        self.enable_ubx(self.enableubx)
+        self.config()
 
         self.stream = Serial(self.port, self.baudrate, timeout=self.timeout)
         self.connected = CONNECTED
@@ -218,20 +222,78 @@ class UbloxGnss:
                     sendqueue.task_done()
             except Empty:
                 pass
+    
+    def config(self):
+        
+        # disable UART1, UART2, only enable USB
+        layers = 1
+        transaction = 0
+        cfg_data = []
+        for port_type in ("UART1", "UART2"):
+            cfg_data.append((f"CFG_{port_type}_ENABLED", False))
+        
+        for port_type in ("USB",):
+            cfg_data.append((f"CFG_{port_type}_ENABLED", True))
             
+        msg = UBXMessage.config_set(layers, transaction, cfg_data)
+        self.sendqueue.put((msg.serialize(), msg))
+        
+        self.enable_out_ubx(self.enableubx)
+        self.enable_out_nmea(self.enablenmea)
+        self.enable_in_rtcm(True)
+        
+        # cfg rate
+        layers = 1
+        transaction = 0
+        cfg_data = []
+        cfg_data.append(("CFG_RATE_MEAS", self.measrate))
+        cfg_data.append(("CFG_RATE_NAV", self.navrate))
+        cfg_data.append(("CFG_RATE_NAV_PRIO", self.navpriorate))
+        msg = UBXMessage.config_set(layers, transaction, cfg_data)
+        self.sendqueue.put((msg.serialize(), msg))
 
-    def enable_ubx(self, enable: bool):
+    def enable_in_rtcm(self, enable: bool):
         """
-        Enable UBX output and suppress NMEA.
+        Enable RTCM input.
+        :param bool enable: enable RTCM
+        """
+        layers = 1
+        transaction = 0
+        cfg_data = []
+        for port_type in ("USB",):
+            cfg_data.append((f"CFG_{port_type}INPROT_RTCM3X", enable))
 
-        :param bool enable: enable UBX and suppress NMEA output
+        msg = UBXMessage.config_set(layers, transaction, cfg_data)
+        self.sendqueue.put((msg.serialize(), msg))
+        
+    
+    def enable_out_nmea(self, enable: bool):
+        """
+        Enable NMEA output.
+        :param bool enable: enable NMEA
+        """
+        layers = 1
+        transaction = 0
+        cfg_data = []
+        for port_type in ("USB",):
+            cfg_data.append((f"CFG_{port_type}OUTPROT_NMEA", enable))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GGA_{port_type}", enable))
+
+        msg = UBXMessage.config_set(layers, transaction, cfg_data)
+        self.sendqueue.put((msg.serialize(), msg))
+        
+
+    def enable_out_ubx(self, enable: bool):
+        """
+        Enable UBX output.
+
+        :param bool enable: enable UBX
         """
 
         layers = 1
         transaction = 0
         cfg_data = []
-        for port_type in ("USB", "UART1"):
-            cfg_data.append((f"CFG_{port_type}OUTPROT_NMEA", not enable))
+        for port_type in ("USB",):
             cfg_data.append((f"CFG_{port_type}OUTPROT_UBX", enable))
             cfg_data.append((f"CFG_MSGOUT_UBX_NAV_PVT_{port_type}", enable))
             # cfg_data.append((f"CFG_MSGOUT_UBX_NAV_SAT_{port_type}", enable * 4))
@@ -265,7 +327,7 @@ def main():
         "-P", "--port", required=False, help="Serial port", default="/dev/ttyACM0"
     )
     arp.add_argument(
-        "-B", "--baudrate", required=False, help="Baud rate", default=38400, type=int
+        "-B", "--baudrate", required=False, help="Baud rate", default=115200, type=int
     )
     arp.add_argument(
         "-T", "--timeout", required=False, help="Timeout in secs", default=3, type=float
@@ -285,6 +347,7 @@ def main():
             sendqueue=send_queue,
             idonly=False,
             enableubx=True,
+            enablenmea=False,
             showhacc=True,
             verbose=True,
         ) as gna:
