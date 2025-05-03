@@ -1,0 +1,19 @@
+/**:
+  ublox_gnss_ros:
+    gnss:
+        # GNSS configuration
+        gnss:
+            # GNSS type
+            type: "UBlox"
+            # GNSS port
+            port: "/dev/ttyUSB0"
+            # GNSS baudrate
+            baudrate: 115200
+            # GNSS frame id
+            frame_id: "gnss"
+            # GNSS timeout
+            timeout: 1.0
+            # GNSS max wait time
+            max_wait_time: 5.0
+            # GNSS max retry count
+            max_retry_count: 3

@@ -2,7 +2,7 @@
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from queue import Empty, Queue
 from threading import Event, Thread
-from time import sleep
+import time
 
 from serial import Serial
 
@@ -42,14 +42,14 @@ class UbloxGnss:
         self.baudrate = baudrate
         self.timeout = timeout
         self.stopevent = stopevent
-        self.sendqueue = kwargs.get("sendqueue", None)
+         
         self.idonly = kwargs.get("idonly", True)
         self.enableubx = kwargs.get("enableubx", False)
         self.enablenmea = kwargs.get("enablenmea", False)
         self.showhacc = kwargs.get("showhacc", False)
-        self.measrate = kwargs.get("measrate", 30)
-        self.navrate = kwargs.get("navrate", 1)
-        self.navpriorate = kwargs.get("navpriorate", 30)
+        self.measrate = kwargs.get("measrate", 1000) # in ms
+        self.navrate = kwargs.get("navrate", 1) # in hz (how many measurements per solution)
+        self.navpriorate = kwargs.get("navpriorate", 1) 
         self.stream = None
         self.connected = DISCONNECTED
         self.lat = 0
@@ -57,8 +57,13 @@ class UbloxGnss:
         self.alt = 0
         self.sep = 0
 
-        self.receivequeue =  kwargs.get("receivequeue", None)
         self.verbose = kwargs.get("verbose", False)
+        
+        self.sendqueue = Queue(50)
+        self.receivequeue = None
+        self.nmea_gga_queue = Queue(50)
+        self.nav_pvt_queue = Queue(50)
+        self.nav_cov_queue = Queue(50)
 
     def __enter__(self):
         """
@@ -112,7 +117,12 @@ class UbloxGnss:
             self.stream.close()
             
             
-    def _read_loop(self, stream: Serial, stopevent: Event, sendqueue: Queue, receivequeue: Queue, verbose: bool):
+    def _read_loop(self, 
+                   stream: Serial, 
+                   stopevent: Event, 
+                   sendqueue: Queue, 
+                   receivequeue: Queue, 
+                   verbose: bool):
         """
         THREADED
         Reads and parses incoming GNSS data from the receiver,
@@ -132,12 +142,21 @@ class UbloxGnss:
         while not stopevent.is_set():
             try:
                 if stream.in_waiting:
-                    _, parsed_data = ubr.read()
+                    raw, parsed_data = ubr.read()
                     if parsed_data:
+                        
+                        if parsed_data.identity == "NAV-PVT":
+                            self.nav_pvt_queue.put((parsed_data))
+                            
+                        if parsed_data.identity == "NAV-COV":
+                            self.nav_cov_queue.put((parsed_data))
+                            
+                        if parsed_data.identity == "GNGGA":
+                            self.nmea_gga_queue.put((raw))
 
                         if verbose == True:
                             # extract current navigation solution
-                            self._extract_coordinates(parsed_data)
+                            # self._extract_coordinates(parsed_data)
     
                             # if it's an RXM-RTCM message, show which RTCM3 message
                             # it's acknowledging and whether it's been used or not.""
@@ -156,7 +175,7 @@ class UbloxGnss:
     
                         # TODO: do something with parsed_data here
                         if receivequeue is not None:
-                            receivequeue.put(parsed_data)
+                            receivequeue.put((raw, parsed_data))
 
                 # send any queued output data to receiver
                 self._send_data(ubr.datastream, sendqueue, verbose)
@@ -194,7 +213,8 @@ class UbloxGnss:
             self.sep = (parsed_data.height - parsed_data.hMSL) / 1000
         if self.showhacc and hasattr(parsed_data, "hAcc"):  # UBX hAcc is in mm
             unit = 1 if parsed_data.identity == "PUBX00" else 1000
-            print(f"Estimated horizontal accuracy: {(parsed_data.hAcc / unit):.3f} m")
+            if self.verbose:
+                print(f"Estimated horizontal accuracy: {(parsed_data.hAcc / unit):.3f} m")
             
 
     def _send_data(self, stream: Serial, sendqueue: Queue, verbose: bool):
@@ -222,7 +242,78 @@ class UbloxGnss:
                     sendqueue.task_done()
             except Empty:
                 pass
+            
+    def get_nav_data(self):
+        if self.nav_pvt_queue.empty() == False:
+            try:
+                parsed_data = self.nav_pvt_queue.get(False)
+                if hasattr(parsed_data, "lat") \
+                    and hasattr(parsed_data, "lon") \
+                    and hasattr(parsed_data, "hMSL") \
+                    and hasattr(parsed_data, "carrSoln") \
+                    and hasattr(parsed_data, "fixType") \
+                    and hasattr(parsed_data, "gnssFixOk"):
+                        
+                    lat = parsed_data.lat
+                    lon = parsed_data.lon
+                    alt = parsed_data.hMSL / 1000 # mm to m
+                    carr_soln = parsed_data.carrSoln
+                    fix_type = parsed_data.fixType
+                    gnss_fix_ok = parsed_data.gnssFixOk
+                    
+                    return (lat, lon, alt, carr_soln, fix_type, gnss_fix_ok)
+            except Empty:
+                pass
+        return None
+            
+    def get_nmea(self):
+        if self.nmea_gga_queue.empty() == False:
+            try:
+                nmea = self.nmea_gga_queue.get(False)
+                if nmea is not None:
+                    return str(nmea)
+            except Empty:
+                pass
+        return None
     
+    def get_nav_cov(self):
+        if self.nav_cov_queue.empty() == False:
+            try:
+                parsed_data = self.nav_cov_queue.get(False)
+                if hasattr(parsed_data, "posCovNN") \
+                    and hasattr(parsed_data, "posCovNE") \
+                    and hasattr(parsed_data, "posCovND") \
+                    and hasattr(parsed_data, "posCovEE") \
+                    and hasattr(parsed_data, "posCovED") \
+                    and hasattr(parsed_data, "posCovDD") :
+                    
+                    cov_matrix = [
+                        parsed_data.posCovEE,
+                        parsed_data.posCovNE,
+                        -parsed_data.posCovED,
+                        parsed_data.posCovNE,
+                        parsed_data.posCovNN,
+                        -parsed_data.posCovND,
+                        -parsed_data.posCovED,
+                        -parsed_data.posCovND,
+                        parsed_data.posCovDD,
+                    ]
+                    
+                    return cov_matrix
+                    
+                    # return (
+                    #     parsed_data.posCovNN,
+                    #     parsed_data.posCovNE,
+                    #     parsed_data.posCovND,
+                    #     parsed_data.posCovEE,
+                    #     parsed_data.posCovED,
+                    #     parsed_data.posCovDD,
+                    # )
+                    
+            except Empty:
+                pass
+        return None
+                    
     def config(self):
         
         # disable UART1, UART2, only enable USB
@@ -232,15 +323,17 @@ class UbloxGnss:
         for port_type in ("UART1", "UART2"):
             cfg_data.append((f"CFG_{port_type}_ENABLED", False))
         
+        # config USB
         for port_type in ("USB",):
             cfg_data.append((f"CFG_{port_type}_ENABLED", True))
+            cfg_data.append((f"CFG_{port_type}OUTPROT_RTCM3X", False))    
             
         msg = UBXMessage.config_set(layers, transaction, cfg_data)
         self.sendqueue.put((msg.serialize(), msg))
         
         self.enable_out_ubx(self.enableubx)
         self.enable_out_nmea(self.enablenmea)
-        self.enable_in_rtcm(True)
+        self.enable_in_rtcm(False)
         
         # cfg rate
         layers = 1
@@ -269,7 +362,7 @@ class UbloxGnss:
     
     def enable_out_nmea(self, enable: bool):
         """
-        Enable NMEA output.
+        Enable NMEA output (only GGA).
         :param bool enable: enable NMEA
         """
         layers = 1
@@ -279,14 +372,23 @@ class UbloxGnss:
             cfg_data.append((f"CFG_{port_type}OUTPROT_NMEA", enable))
             cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GGA_{port_type}", enable))
 
+            # suppress all common NMEA messages on the specified port
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GLL_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GSA_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GSV_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_RMC_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_VTG_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_ZDA_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GST_{port_type}", False))
+            cfg_data.append((f"CFG_MSGOUT_NMEA_ID_GNS_{port_type}", False))
+
         msg = UBXMessage.config_set(layers, transaction, cfg_data)
         self.sendqueue.put((msg.serialize(), msg))
         
 
     def enable_out_ubx(self, enable: bool):
         """
-        Enable UBX output.
-
+        Enable UBX output (only NAV-PVT).
         :param bool enable: enable UBX
         """
 
@@ -296,28 +398,11 @@ class UbloxGnss:
         for port_type in ("USB",):
             cfg_data.append((f"CFG_{port_type}OUTPROT_UBX", enable))
             cfg_data.append((f"CFG_MSGOUT_UBX_NAV_PVT_{port_type}", enable))
-            # cfg_data.append((f"CFG_MSGOUT_UBX_NAV_SAT_{port_type}", enable * 4))
-            # cfg_data.append((f"CFG_MSGOUT_UBX_NAV_DOP_{port_type}", enable * 4))
-            # cfg_data.append((f"CFG_MSGOUT_UBX_NAV_SIG_{port_type}", enable))
-            # cfg_data.append((f"CFG_MSGOUT_UBX_RXM_RTCM_{port_type}", enable))
-            # cfg_data.append((f"CFG_MSGOUT_UBX_RXM_COR_{port_type}", enable))
-            
+            cfg_data.append((f"CFG_MSGOUT_UBX_NAV_COV_{port_type}", enable))
 
         msg = UBXMessage.config_set(layers, transaction, cfg_data)
         self.sendqueue.put((msg.serialize(), msg))
         
-
-    def get_coordinates(self) -> tuple:
-        """
-        Return current receiver navigation solution.
-        (method needed by certain pygnssutils classes)
-
-        :return: tuple of (connection status, lat, lon, alt and sep)
-        :rtype: tuple
-        """
-
-        return (self.connected, self.lat, self.lon, self.alt, self.sep)
-
 
 def main():
     arp = ArgumentParser(
@@ -334,7 +419,10 @@ def main():
     )
 
     args = arp.parse_args()
-    send_queue = Queue()
+    
+    msg_cnt = 0
+    last_msg_time = None
+    
     stop_event = Event()
     
     try:
@@ -344,16 +432,20 @@ def main():
             int(args.baudrate),
             float(args.timeout),
             stop_event,
-            sendqueue=send_queue,
             idonly=False,
             enableubx=True,
             enablenmea=False,
             showhacc=True,
             verbose=True,
+            measrate=100,
+            navrate=1,
+            navpriorate=1,
         ) as gna:
             gna.run()
             while True:
-                sleep(1)
+                time.sleep(1)
+                
+                
     except KeyboardInterrupt:
         stop_event.set()
         print("Terminated by user")
