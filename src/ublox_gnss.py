@@ -1,6 +1,7 @@
 #
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from queue import Empty, Queue
+from collections import deque
 from threading import Event, Thread
 import time
 
@@ -13,7 +14,7 @@ from pynmeagps import (
 from pyrtcm import (
     RTCMMessage, 
     RTCMMessageError, 
-    RTCMParseError
+    RTCMParseError,
 )
 
 from pyubx2 import (
@@ -61,9 +62,9 @@ class UbloxGnss:
         
         self.sendqueue = Queue(50)
         self.receivequeue = None
-        self.nmea_gga_queue = Queue(50)
-        self.nav_pvt_queue = Queue(50)
-        self.nav_cov_queue = Queue(50)
+        self.nmea_gga_queue = deque(maxlen=10)
+        self.nav_pvt_queue = deque(maxlen=10)
+        self.nav_cov_queue = deque(maxlen=10)
 
     def __enter__(self):
         """
@@ -146,13 +147,16 @@ class UbloxGnss:
                     if parsed_data:
                         
                         if parsed_data.identity == "NAV-PVT":
-                            self.nav_pvt_queue.put((parsed_data))
+                            self.nav_pvt_queue.append((parsed_data))
                             
                         if parsed_data.identity == "NAV-COV":
-                            self.nav_cov_queue.put((parsed_data))
+                            self.nav_cov_queue.append((parsed_data))
                             
                         if parsed_data.identity == "GNGGA":
-                            self.nmea_gga_queue.put((raw))
+                            self.nmea_gga_queue.append((raw))
+                            
+                        # if receivequeue is not None:
+                        #     receivequeue.put((raw, parsed_data))
 
                         if verbose == True:
                             # extract current navigation solution
@@ -172,10 +176,7 @@ class UbloxGnss:
                                 print(f"GNSS>> {parsed_data.identity}{nty}")
                             else:
                                 print(parsed_data)
-    
-                        # TODO: do something with parsed_data here
-                        if receivequeue is not None:
-                            receivequeue.put((raw, parsed_data))
+
 
                 # send any queued output data to receiver
                 self._send_data(ubr.datastream, sendqueue, verbose)
@@ -188,7 +189,8 @@ class UbloxGnss:
                 RTCMMessageError,
                 RTCMParseError,
             ) as err:
-                print(f"Error parsing data stream {err}")
+                if verbose:
+                    print(f"Error parsing data stream {err}")
                 continue
             
 
@@ -243,10 +245,17 @@ class UbloxGnss:
             except Empty:
                 pass
             
+    def send_rtcm(self, rtcm):
+        try:
+            self.sendqueue.put((rtcm, None))
+        except Exception as e:
+            if self.verbose:
+                print(f"Error: {e}")
+            
     def get_nav_data(self):
-        if self.nav_pvt_queue.empty() == False:
+        if len(self.nav_pvt_queue) > 0:
             try:
-                parsed_data = self.nav_pvt_queue.get(False)
+                parsed_data = self.nav_pvt_queue.pop()
                 if hasattr(parsed_data, "lat") \
                     and hasattr(parsed_data, "lon") \
                     and hasattr(parsed_data, "hMSL") \
@@ -267,19 +276,21 @@ class UbloxGnss:
         return None
             
     def get_nmea(self):
-        if self.nmea_gga_queue.empty() == False:
+        if len(self.nmea_gga_queue) > 0:
             try:
-                nmea = self.nmea_gga_queue.get(False)
+                nmea = self.nmea_gga_queue.pop()
                 if nmea is not None:
+                    if isinstance(nmea, bytes):
+                        return nmea.decode('utf-8', errors='replace')
                     return str(nmea)
             except Empty:
                 pass
         return None
     
     def get_nav_cov(self):
-        if self.nav_cov_queue.empty() == False:
+        if len(self.nav_cov_queue) > 0:
             try:
-                parsed_data = self.nav_cov_queue.get(False)
+                parsed_data = self.nav_cov_queue.pop()
                 if hasattr(parsed_data, "posCovNN") \
                     and hasattr(parsed_data, "posCovNE") \
                     and hasattr(parsed_data, "posCovND") \
@@ -333,7 +344,7 @@ class UbloxGnss:
         
         self.enable_out_ubx(self.enableubx)
         self.enable_out_nmea(self.enablenmea)
-        self.enable_in_rtcm(False)
+        self.enable_in_rtcm(True)
         
         # cfg rate
         layers = 1
@@ -432,7 +443,7 @@ def main():
             int(args.baudrate),
             float(args.timeout),
             stop_event,
-            idonly=False,
+            idonly=True,
             enableubx=True,
             enablenmea=False,
             showhacc=True,

@@ -21,6 +21,8 @@ class UbloxGnssNode(Node):
         self.declare_parameter('serial.baudrate', 115200)
         self.declare_parameter('serial.timeout', 3.0)
         self.declare_parameter('frame_id', 'gps')
+        self.declare_parameter('publish.nmea', True)
+        # self.declare_parameter('publish.imu', True)
         
         self.declare_parameter('verbose', False)
         
@@ -29,7 +31,9 @@ class UbloxGnssNode(Node):
         self.serial_baudrate = self.get_parameter('serial.baudrate').get_parameter_value().integer_value
         self.serial_timeout = self.get_parameter('serial.timeout').get_parameter_value().double_value
         
-        self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
+        self.gnss_frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
+        self.publish_nmea = self.get_parameter('publish.nmea').get_parameter_value().bool_value
+        # self.publish_imu = self.get_parameter('publish.imu').get_parameter_value().bool_value
         
         self.verbose = self.get_parameter('verbose').get_parameter_value().bool_value
         
@@ -37,14 +41,17 @@ class UbloxGnssNode(Node):
         self.get_logger().info(f'Using serial port: {self.serial_port}')
         self.get_logger().info(f'Using serial baudrate: {self.serial_baudrate}')
         self.get_logger().info(f'Using serial timeout: {self.serial_timeout}')
-        self.get_logger().info(f'Using frame id: {self.frame_id}')
+        self.get_logger().info(f'Using frame id: {self.gnss_frame_id}')
         self.get_logger().info(f'Using verbose: {self.verbose}')
         
         # init topics
         self.fix_pub = self.create_publisher(
             NavSatFix, '/fix', 10)
-        self.nmea_pub = self.create_publisher(
-            Sentence, '/nmea', 10)
+        
+        if self.publish_nmea:
+            self.nmea_pub = self.create_publisher(
+                Sentence, '/nmea', 10)
+            
         self.rtcm_sub = self.create_subscription(
             RtcmMessage,
             '/rtcm',
@@ -52,7 +59,8 @@ class UbloxGnssNode(Node):
             10
         )
         
-        self.fix_pub_timer = self.create_timer(0.03, self.on_fix_pub_timer)
+        self.fix_pub_timer = self.create_timer(
+            1.0, self.on_fix_pub_timer)
 
         # init ublox gnss
         self.send_queue = Queue()
@@ -81,10 +89,8 @@ class UbloxGnssNode(Node):
     
     def on_rtcm_msg_rx_callback(self, msg):
         # put to send queue for sending to ublox gnss module
-        try:
-            self.send_queue.put(msg.message)
-        except Exception as e:
-            self.get_logger().error(f"Error: {e}")
+        if self.ublox_gnss is not None:
+            self.ublox_gnss.send_rtcm(msg.message)
             
     def on_fix_pub_timer(self):
         try:
@@ -98,7 +104,7 @@ class UbloxGnssNode(Node):
                 lat, lon, alt, carr_soln, fix_type, gnss_fix_ok = nav_data
                 navsatfix_msg = NavSatFix()
                 navsatfix_msg.header.stamp = self.get_clock().now().to_msg()
-                navsatfix_msg.header.frame_id = self.frame_id
+                navsatfix_msg.header.frame_id = self.gnss_frame_id
                 navsatfix_msg.latitude = lat
                 navsatfix_msg.longitude = lon
                 navsatfix_msg.altitude = alt
@@ -106,7 +112,10 @@ class UbloxGnssNode(Node):
                     navsatfix_msg.position_covariance = self.last_nav_cov
                 navsatfix_msg.position_covariance_type = NavSatFix.COVARIANCE_TYPE_KNOWN
 
-                navsatfix_msg.status.service = NavSatStatus.SERVICE_GPS
+                navsatfix_msg.status.service = NavSatStatus.SERVICE_GPS \
+                                                | NavSatStatus.SERVICE_GLONASS \
+                                                | NavSatStatus.SERVICE_COMPASS \
+                                                | NavSatStatus.SERVICE_GALILEO
                 if not gnss_fix_ok:
                     navsatfix_msg.status.status = NavSatStatus.STATUS_NO_FIX
                 else:
@@ -121,16 +130,19 @@ class UbloxGnssNode(Node):
                 self.fix_pub.publish(navsatfix_msg)
                 
             # publish NMEA sentences
-            nmea = self.ublox_gnss.get_nmea()
-            if nmea is not None:
-                nmea_msg = Sentence()
-                nmea_msg.header.stamp = self.get_clock().now().to_msg()
-                nmea_msg.header.frame_id = self.frame_id
-                nmea_msg.sentence = nmea
-                self.nmea_pub.publish(nmea_msg)
-                
+            if self.publish_nmea:
+                nmea = self.ublox_gnss.get_nmea()
+                if nmea is not None:
+                    nmea_msg = Sentence()
+                    nmea_msg.header.stamp = self.get_clock().now().to_msg()
+                    nmea_msg.header.frame_id = self.gnss_frame_id
+                    nmea_msg.sentence = nmea
+                    self.nmea_pub.publish(nmea_msg)
+            
+            
         except Exception as e:
-            self.get_logger().error(f"Error: {e}")
+            if self.verbose:
+                self.get_logger().error(f"Error: {e}")
     
     
 def main(args=None):
