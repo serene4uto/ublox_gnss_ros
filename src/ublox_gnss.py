@@ -337,24 +337,34 @@ class UbloxGnss:
         # config USB
         for port_type in ("USB",):
             cfg_data.append((f"CFG_{port_type}_ENABLED", True))
-            cfg_data.append((f"CFG_{port_type}OUTPROT_RTCM3X", False))    
+            cfg_data.append((f"CFG_{port_type}OUTPROT_RTCM3X", False))  
             
         msg = UBXMessage.config_set(layers, transaction, cfg_data)
         self.sendqueue.put((msg.serialize(), msg))
-        
+
         self.enable_out_ubx(self.enableubx)
         self.enable_out_nmea(self.enablenmea)
         self.enable_in_rtcm(True)
         
-        # cfg rate
         layers = 1
         transaction = 0
-        cfg_data = []
+        cfg_data = [] 
+        # config Dynamic Model as automotive
+        cfg_data.append(("CFG_NAVSPG_DYNMODEL", 4)) # 4 = automotive
+        msg = UBXMessage.config_set(layers, transaction, cfg_data)
+        self.sendqueue.put((msg.serialize(), msg))
+
+        layers = 1
+        transaction = 0
+        cfg_data = [] 
+        # cfg rate
         cfg_data.append(("CFG_RATE_MEAS", self.measrate))
         cfg_data.append(("CFG_RATE_NAV", self.navrate))
         cfg_data.append(("CFG_RATE_NAV_PRIO", self.navpriorate))
         msg = UBXMessage.config_set(layers, transaction, cfg_data)
         self.sendqueue.put((msg.serialize(), msg))
+        
+
 
     def enable_in_rtcm(self, enable: bool):
         """
@@ -448,9 +458,9 @@ def main():
             enablenmea=False,
             showhacc=True,
             verbose=True,
-            measrate=100,
+            measrate=30,
             navrate=1,
-            navpriorate=1,
+            navpriorate=30,
         ) as gna:
             gna.run()
             while True:

@@ -20,6 +20,9 @@ class UbloxGnssNode(Node):
         self.declare_parameter('serial.port', '/dev/ttyACM0')
         self.declare_parameter('serial.baudrate', 115200)
         self.declare_parameter('serial.timeout', 3.0)
+        self.declare_parameter('meas_rate', 1000)
+        self.declare_parameter('nav_rate', 1)
+        self.declare_parameter('nav_prio_rate', 1)
         self.declare_parameter('frame_id', 'gps')
         self.declare_parameter('publish.nmea', True)
         # self.declare_parameter('publish.imu', True)
@@ -32,6 +35,11 @@ class UbloxGnssNode(Node):
         self.serial_timeout = self.get_parameter('serial.timeout').get_parameter_value().double_value
         
         self.gnss_frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
+        
+        self.meas_rate = self.get_parameter('meas_rate').get_parameter_value().integer_value
+        self.nav_rate = self.get_parameter('nav_rate').get_parameter_value().integer_value
+        self.nav_prio_rate = self.get_parameter('nav_prio_rate').get_parameter_value().integer_value
+        
         self.publish_nmea = self.get_parameter('publish.nmea').get_parameter_value().bool_value
         # self.publish_imu = self.get_parameter('publish.imu').get_parameter_value().bool_value
         
@@ -42,6 +50,11 @@ class UbloxGnssNode(Node):
         self.get_logger().info(f'Using serial baudrate: {self.serial_baudrate}')
         self.get_logger().info(f'Using serial timeout: {self.serial_timeout}')
         self.get_logger().info(f'Using frame id: {self.gnss_frame_id}')
+        self.get_logger().info(f'Using meas rate: {self.meas_rate}')
+        self.get_logger().info(f'Using nav rate: {self.nav_rate}')
+        self.get_logger().info(f'Using nav prio rate: {self.nav_prio_rate}')
+        self.get_logger().info(f'Using publish nmea: {self.publish_nmea}')
+        # self.get_logger().info(f'Using publish imu: {self.publish_imu}')
         self.get_logger().info(f'Using verbose: {self.verbose}')
         
         # init topics
@@ -60,7 +73,7 @@ class UbloxGnssNode(Node):
         )
         
         self.fix_pub_timer = self.create_timer(
-            1.0, self.on_fix_pub_timer)
+            0.01, self.on_fix_pub_timer)
 
         # init ublox gnss
         self.send_queue = Queue()
@@ -77,6 +90,9 @@ class UbloxGnssNode(Node):
             enablenmea=True,
             showhacc=True,
             verbose=False,
+            measrate=self.meas_rate,
+            navrate=self.nav_rate,
+            navpriorate=self.nav_prio_rate,
         )
         
         self.ublox_gnss.run()
