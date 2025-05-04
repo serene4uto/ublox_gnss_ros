@@ -8,4 +8,7 @@
       frame_id: gnss
       publish:
         nmea: true
-    
+      
+      meas_rate: 100
+      nav_rate: 1
+      nav_prio_rate: 30
