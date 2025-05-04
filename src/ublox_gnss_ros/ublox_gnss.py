@@ -144,7 +144,7 @@ class UbloxGnss:
             try:
                 if stream.in_waiting:
                     raw, parsed_data = ubr.read()
-                    if parsed_data:
+                    if parsed_data and hasattr(parsed_data, "identity"):
                         
                         if parsed_data.identity == "NAV-PVT":
                             self.nav_pvt_queue.append((parsed_data))

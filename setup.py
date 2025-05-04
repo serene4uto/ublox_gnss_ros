@@ -7,7 +7,8 @@ package_name = 'ublox_gnss_ros'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=[package_name],
+    package_dir={'': 'src'},
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -26,7 +27,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "ublox_gnss_node = src.ublox_gnss_node:main",
+            "ublox_gnss_node = ublox_gnss_ros.ublox_gnss_node:main",
         ],
     },
 )
